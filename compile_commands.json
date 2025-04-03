@@ -1,0 +1,8 @@
+[
+	{ 
+		"directory": "/home/jh/Documents/c++dev/tetris",
+    "command": "clang++",
+    "arguments": ["/bin/clang++", "-I./inc", "./bin/engine.o", "./src/engine.cpp"],
+    "file": "src/engine.cpp" 
+	}
+]
