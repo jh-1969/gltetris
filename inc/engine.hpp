@@ -24,6 +24,7 @@ class Engine {
     ~Engine();
     
     void clear();
+    void flush();
     bool running();
 
     void add_glfw_key_callback(void(*callback)(GLFWwindow* window, int key, int scancode, int action, int mods));

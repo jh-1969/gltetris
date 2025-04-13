@@ -18,8 +18,8 @@ class TextureList {
   public:
     ~TextureList();
 
-    GLuint add(const char* path, int type); //returns index of texture
-                                            //used when drawing a sprite
+    GLuint add(const char* path, bool transparent); //returns index of texture
+                                                    //used when drawing a sprite
     void bind();
     void unbind();
     void create_ssbo();

@@ -1,4 +1,8 @@
+#pragma once
+
 #include <glm/glm.hpp>
+
+
 
 #define WINDOW_WIDTH 800
 #define WINDOW_HEIGHT 800
@@ -6,7 +10,13 @@
 #define ROWS 20
 #define COLUMNS 10
 
-#define SLOWDOWN 0.02;
+#define SPEEDUP 0.02;
+#define START_SPEED 1.5;
+
+enum GAME_PHASE {
+  MENU,
+  GAME,
+};
 
 enum TETROMINO_TYPE {
   THE_T,
@@ -28,6 +38,7 @@ const glm::vec3 COLORS[] {
   glm::vec3(1.0, 0.5, 0.0),
   glm::vec3(0.3, 0.3, 0.3),
   glm::vec3(1.0, 1.0, 1.0),
+  glm::vec3(0.5, 0.5, 0.5),
 };
 
 enum COLOR_NAMES {
@@ -40,6 +51,7 @@ enum COLOR_NAMES {
   ORANGE,
   GREY,
   WHITE,
+  LIGHT_GREY,
 };
 
 const char TETROMINO_MAP[7][16] = {

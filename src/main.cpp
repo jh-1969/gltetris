@@ -7,36 +7,20 @@
 #include <config.hpp>
 #include <texturelist.hpp>
 
-#include <glad.hpp>
+#include <grid.hpp>
+#include <tetromino.hpp>
+
 #include <glm/glm.hpp>
-#include <glm/gtx/matrix_transform_2d.hpp>
 
 
 
+//used to get input from key_callback
+bool pressedRight = false, pressedLeft = false, pressedUp = false, pressedDown = false, pressedSpace = false, pressedEsc = false, pressedEnter = false;
+bool releaseDown = false;
 
-char grid[COLUMNS][ROWS];
-int s = WINDOW_HEIGHT / ROWS;
-
-TETROMINO_TYPE type;
-
-char tx, ty, sy;
-char rot;
-
-double stop = 1.0;
-double speedUp = 1.0;
-double acc = 0.0;
-
-int blockTexture = 0;
-int sideTexture = 0;
+static void reset_input();
 
 
-
-static char get_rotated_index(char rot, int i, int j);
-static void draw_grid(Canvas* canvas);
-static void draw_tetrimono(Canvas* canvas);
-static bool check_collision(int px, int py);
-static void place_tetromino(int px, int py);
-static void reset();
 
 static void
 key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
@@ -53,38 +37,103 @@ int main() {
   );
   
   TextureList* texturelist = new TextureList();
-  blockTexture = texturelist->add("/home/jh/Pictures/gmail/gmail.jpeg", GL_RGB);
-  sideTexture = texturelist->add("/home/jh/Pictures/wallpapers/sunrise.png", GL_RGB);
+  int blockTex = texturelist->add("./assets/textures/block.jpg", false);
+  int gridBgTex = texturelist->add("./assets/textures/grid_bg.jpg", false);
+  int sideTex = texturelist->add("./assets/textures/side.jpg", false);
+  int menuTex = texturelist->add("./assets/textures/menu_bg.jpg", false);
+  int titleTex = texturelist->add("./assets/textures/title.png", true);
+  int playTex = texturelist->add("./assets/textures/play_txt.png", true);
+  int exitTex = texturelist->add("./assets/textures/exit_txt.png", true);
   texturelist->create_ssbo();
 
   Canvas* canvas = new Canvas(shader, texturelist);
   
-  memset(grid, -1, COLUMNS * ROWS);
+  GAME_PHASE phase = MENU;
   srand(time(0));
-  reset();
+
+  Grid* grid = new Grid(sideTex, gridBgTex);;
+  Tetromino* tetromino = new Tetromino(blockTex);;
+
+  bool gameRunning = true;
+  bool selectedPlay = true;
+
+  double stop = START_SPEED;
+  double speedUp = 1.0;
+  double acc = 0.0;
 
   do {
-    if(glfwGetTime() - acc > stop / speedUp) {
-      acc = glfwGetTime();
-
-      ty++;
-
-      if(check_collision(tx, ty)) {
-        ty--;
-        place_tetromino(tx, ty);
-        reset();
-      }
-    }
-
     engine->clear();
 
-    draw_tetrimono(canvas);
-    draw_grid(canvas);
+    switch(phase) {
+      case MENU: {
+        if(pressedUp)
+          selectedPlay = true;
+        if(pressedDown)
+          selectedPlay = false;
+        
+        if(pressedEnter) {
+          if(selectedPlay)
+            phase = GAME;
+          else
+            gameRunning = false;
+        }
+        
+        canvas->draw_sprite(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, 0.0, COLORS[WHITE], menuTex);
+        canvas->draw_sprite(100, 100, 600, 180, 0.0, COLORS[WHITE], titleTex);
+        canvas->draw_sprite(300, 400, 200, 80, 0.0,
+            selectedPlay ? COLORS[LIGHT_GREY] : COLORS[GREY], playTex);
+        canvas->draw_sprite(300, 500, 200, 80, 0.0,
+            selectedPlay ? COLORS[GREY] : COLORS[LIGHT_GREY], exitTex);
+        break;
+      }
 
+      case GAME: {
+        int placedCount = 0;
+
+        if(pressedRight)
+          tetromino->move_right(grid);
+        if(pressedLeft)
+          tetromino->move_left(grid);
+        if(pressedUp)
+          tetromino->rotate(grid);
+        if(pressedSpace)
+          placedCount = tetromino->place_shadow(grid);
+        if(pressedDown)
+          speedUp = 10.0;
+        if(releaseDown)
+          speedUp = 1.0;
+
+        if(glfwGetTime() - acc > stop / speedUp) {
+          acc = glfwGetTime();
+
+          if(tetromino->advance(grid)) {
+            placedCount = tetromino->place(grid);
+          }
+        }
+        
+        grid->draw(canvas);
+        tetromino->draw(canvas, grid);
+        
+        if(placedCount != 0 && placedCount == -1) {
+          stop = START_SPEED;
+          grid->reset();
+          phase = MENU;
+        } else {
+          stop -= (double)placedCount * SPEEDUP;
+        }
+        break;
+      }
+    }
+    
     canvas->draw();
+    engine->flush();
+    reset_input(); 
+  } while(engine->running() && gameRunning);
 
-  } while(engine->running());
-  
+  delete grid;
+  delete tetromino;
+
+  delete texturelist;
   delete canvas;
   delete shader;
   delete engine;
@@ -92,246 +141,39 @@ int main() {
   return 0;
 }
 
-static char get_rotated_index(char rot, int i, int j) {
-  switch(rot) {
-    case 0:
-      return i * 4 + j;
-    case 1:
-      return (3 - j) * 4 + i;
-    case 2:
-      return (3 - i) * 4 + (3 - j);
-    case 3:
-      return j * 4 + (3 - i);
-
-    default:
-      std::cout << "rotation out of bounds" << std::endl;
-      exit(1);
-  }
-}
-
-static void draw_grid(Canvas* canvas) {
-  int fieldOff = WINDOW_WIDTH / 4;
- 
-  for(int i = 0; i < COLUMNS; i++) {
-    for(int j = 0; j < ROWS; j++) {
-      if(grid[i][j] > -1) {
-        int x = fieldOff + i * s;
-        int y = j * s;
-        canvas->draw_sprite(x, y, s, s, 0.0, COLORS[grid[i][j]], blockTexture);
-      }
-    }
-  }
-
-  canvas->draw_sprite(0, 0, fieldOff, WINDOW_HEIGHT, 0.0, COLORS[WHITE], sideTexture);
-  canvas->draw_sprite(WINDOW_WIDTH, 0, -fieldOff, WINDOW_HEIGHT, 0.0, COLORS[WHITE], sideTexture);
-}
-
-static void draw_tetrimono(Canvas* canvas) {
-  sy = ROWS;
-
-  int pxs[4];
-  int pys[4];
-  int cols[4];
-  int pi = 0;
-
-  for(int i = 0; i < 4; i++) {
-    for(int j = 0; j < 4; j++) {
-      int index = get_rotated_index(rot, i, j);
-      int val = TETROMINO_MAP[type][index];
-                 
-      if(val > -1) {
-        int ix = tx + j;
-        int iy = ty + i;
-        
-        int x = WINDOW_WIDTH / 4 + ix * s;
-        int y = iy * s;
-
-        pxs[pi] = x;
-        pys[pi] = y;
-        cols[pi] = val;
-        pi++;
-
-        for(int k = MAX(iy, 0); k < ROWS; k++) {
-          if(grid[ix][k] > -1) {
-            sy = MIN(sy, k);
-          }
-        }
-      }
-    }
-  }
-  sy -= 2;
-  while(check_collision(tx, sy))
-    sy--;
-
-  for(int i = 0; i < 4; i++) {
-    for(int j = 0; j < 4; j++) {
-      int index = get_rotated_index(rot, i, j);
-      int val = TETROMINO_MAP[type][index];
-                 
-      if(val > -1) {
-        int ix = tx + j;
-        int iy = sy + i;
-        
-        int x = WINDOW_WIDTH / 4 + ix * s;
-        int y = iy * s;
-
-        canvas->draw_sprite(x, y, s, s, 0.0, COLORS[GREY], blockTexture);
-      }
-    }
-  }
-
-  for(int i = 0; i < 4; i++) {
-    canvas->draw_sprite(pxs[i], pys[i], s, s, 0.0, COLORS[cols[i]], blockTexture);
-  }
-}
-
-static bool check_collision(int px, int py) {
-  for(int i = 0; i < 4; i++) {
-    for(int j = 0; j < 4; j++) {
-      int index = get_rotated_index(rot, i, j);
-      
-      if(TETROMINO_MAP[type][index] > -1) {
-        int x = px + j;
-        int y = py + i;
-
-        if(x < 0 || x > COLUMNS - 1)
-          return true;
-        else if(y > ROWS - 1)
-          return true;
-        else if(y >= 0 && grid[x][y] > -1)
-          return true;
-      }
-    }
-  }
-  return false;
-}
-
-static void place_tetromino(int px, int py) {
-  int maxY = 0;
-  int minY = ROWS;
-
-  for(int i = 0; i < 4; i++) {
-    for(int j = 0; j < 4; j++) {
-      int index = get_rotated_index(rot, i, j);
-      
-      if(TETROMINO_MAP[type][index] > -1) {
-        int x = px + j;
-        int y = py + i;
-
-        maxY = MAX(maxY, y);
-        minY = MIN(minY, y);
-
-        grid[x][y] = TETROMINO_MAP[type][index];
-      }
-    }
-  }
-
-  for(int j = minY; j <= maxY; j++) {
-    bool full = true;
-
-    for(int i = 0; i < COLUMNS; i++) {
-      if(grid[i][j] == -1)
-        full = false;
-    }
-    if(full) {
-      stop -= SLOWDOWN;
-
-      for(int i = 0; i < COLUMNS; i++) {
-        for(int k = j - 1; k > -1; k--) {
-          grid[i][k + 1] = grid[i][k];
-        }
-      } 
-    }
-  }
-}
-
-static void reset() {
-  tx = COLUMNS / 2 - 2;
-  ty = -3;
-  sy = -3;
-  rot = 0;
-
-  type = (TETROMINO_TYPE)(rand() % 7);
+static void reset_input() {
+  pressedUp = false;
+  pressedDown = false;
+  pressedLeft = false;
+  pressedRight = false;
+  pressedSpace = false;
+  pressedEsc = false;
+  pressedEnter = false;
+  
+  releaseDown = false;
 }
 
 static void
 key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
   if(action == GLFW_PRESS) {
-    if(key == GLFW_KEY_W || key == GLFW_KEY_UP) {
-      rot++;
-      if(rot > 3)
-        rot = 0;
-      
-      if(type != THE_T) {
-        if(check_collision(tx, ty)) {
-          rot--;
-          if(rot < 0)
-            rot = 3;
-        }
-      } else {
-        switch(rot) {
-          case 0:
-            tx++;
-            if(check_collision(tx, ty)) {
-              rot--;
-              tx--;
-              if(rot < 0)
-                rot = 3;
-            }
-            break;
-
-          case 1:
-            ty++;
-            if(check_collision(tx, ty)) {
-              rot--;
-              ty--;
-              if(rot < 0)
-                rot = 3;
-            }
-            break;
-
-          case 2:
-            tx--;
-            if(check_collision(tx, ty)) {
-              rot--;
-              tx++;
-              if(rot < 0)
-                rot = 3;
-            }
-            break;
-
-          case 3:
-            if(check_collision(tx, ty)) {
-              rot--;
-              if(rot < 0)
-                rot = 3;
-            }
-            break;
-        }
-      }
-    }
-    if(key == GLFW_KEY_A || key == GLFW_KEY_LEFT) {
-      tx--;
-      if(check_collision(tx, ty))
-        tx++;
-    }
-    if(key == GLFW_KEY_D || key == GLFW_KEY_RIGHT) {
-      tx++;
-      if(check_collision(tx, ty))
-        tx--;
-    }
-    if(key == GLFW_KEY_S || key == GLFW_KEY_DOWN) {
-      speedUp = 10.0;
-    }
-    if(key == GLFW_KEY_SPACE) {
-      place_tetromino(tx, sy);
-      reset();
-    }
+    if(key == GLFW_KEY_W || key == GLFW_KEY_UP)
+      pressedUp = true;
+    if(key == GLFW_KEY_A || key == GLFW_KEY_LEFT)
+      pressedLeft = true;
+    if(key == GLFW_KEY_D || key == GLFW_KEY_RIGHT)
+      pressedRight = true;
+    if(key == GLFW_KEY_S || key == GLFW_KEY_DOWN)
+      pressedDown = true;
+    if(key == GLFW_KEY_SPACE)
+      pressedSpace = true;
+    if(key == GLFW_KEY_ESCAPE)
+      pressedEsc = true;
+    if(key == GLFW_KEY_ENTER)
+      pressedEnter = true;
   }
 
   if(action == GLFW_RELEASE) {
-    if(key == GLFW_KEY_S || key == GLFW_KEY_DOWN) {
-      speedUp = 1.0;
-    }
+    if(key == GLFW_KEY_S || key == GLFW_KEY_DOWN)
+      releaseDown = true;
   }
 }

@@ -17,6 +17,10 @@ in flat uint instanceID;
 out vec4 fragColor;
 
 void main() {
-  vec3 texColor = texture(textures[texIndexes[instanceID]], uv).rgb;
-  fragColor = vec4(texColor * colors[instanceID], 1.0);
+  vec4 texColor = texture(textures[texIndexes[instanceID]], uv);
+
+  if(texColor.a < 0.9)
+    discard;
+
+  fragColor = vec4(texColor.rgb * colors[instanceID], 1.0);
 }

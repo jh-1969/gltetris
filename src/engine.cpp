@@ -43,8 +43,11 @@ void Engine::clear() {
   glClear(GL_COLOR_BUFFER_BIT);
 }
 
-bool Engine::running() {
+void Engine::flush() {
   glfwSwapBuffers(window);
+}
+
+bool Engine::running() {
   glfwPollEvents();
   
   return !glfwWindowShouldClose(this->window);

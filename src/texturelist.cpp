@@ -7,7 +7,7 @@ TextureList::~TextureList() {
   glDeleteBuffers(1, &ssbo);
 }
 
-GLuint TextureList::add(const char* path, int type) {
+GLuint TextureList::add(const char* path, bool transparent) {
   int width, height, nrChannels;
   stbi_set_flip_vertically_on_load(true);
   unsigned char *data = stbi_load(path, &width, &height, &nrChannels, 0);
@@ -19,11 +19,11 @@ GLuint TextureList::add(const char* path, int type) {
 
   GLuint texture;
   glCreateTextures(GL_TEXTURE_2D, 1, &texture);
-  glTextureStorage2D(texture, 1, GL_RGB8, width, height);
+  glTextureStorage2D(texture, 1, transparent ? GL_RGBA8 : GL_RGB8, width, height);
   glTextureSubImage2D(
     texture, 
     0, 0, 0, width, height, 
-    GL_RGB, GL_UNSIGNED_BYTE, 
+    transparent ? GL_RGBA : GL_RGB, GL_UNSIGNED_BYTE, 
     (const void *)&data[0]);
   glGenerateTextureMipmap(texture);
 
@@ -32,6 +32,8 @@ GLuint TextureList::add(const char* path, int type) {
       std::cerr << "Error! Handle returned null" << std::endl;
       exit(-1);
   }
+
+  free(data);
 
   int index = this->textures.size();
   this->textures.push_back(texture);
